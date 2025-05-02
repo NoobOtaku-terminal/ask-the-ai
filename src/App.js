@@ -12,6 +12,7 @@ const ChatMessage = ({ role, content }) => (
 );
 
 function App() {
+  // ... [Keep all the previous state and logic the same] ...
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -147,12 +148,20 @@ function App() {
         <div className="recording-controls">
           <button
             type="button"
-            className={`record-btn ${isRecording ? 'recording' : ''}`}
+            className={`button record-btn ${isRecording ? 'recording' : ''}`}
             onClick={isRecording ? stopRecording : startRecording}
           >
-            {isRecording ? '⏹ Stop Recording' : '⏺ Start Recording'}
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+              {isRecording ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+              )}
+            </svg>
+            <div className="text">
+              {isRecording ? 'Stop Rec' : 'Start Rec'}
+            </div>
           </button>
-          {isRecording && <div className="recording-indicator">● Recording</div>}
         </div>
       </header>
 
@@ -179,26 +188,37 @@ function App() {
           <div className="input-container">
             <button
               type="button"
-              className={`mic-btn ${isListening ? 'active' : ''}`}
+              className={`button mic-btn ${isListening ? 'active' : ''}`}
               onClick={toggleListening}
             >
-              🎤{isListening && ' Listening...'}
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+              </svg>
+              <div className="text">
+                {isListening ? 'Listening' : 'Mic'}
+              </div>
             </button>
+            
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask me anything..."
               required
+              className="chat-input"
             />
-            <button type="submit" disabled={isLoading}>
-              {isLoading ? '✉️ Sending...' : 'Send'}
+            
+            <button type="submit" className="button send-btn" disabled={isLoading}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+              </svg>
+              <div className="text">
+                {isLoading ? 'Sending' : 'Send'}
+              </div>
             </button>
           </div>
         </form>
       </div>
-
-      {error && <div className="error-message">{error}</div>}
     </div>
   );
 }
