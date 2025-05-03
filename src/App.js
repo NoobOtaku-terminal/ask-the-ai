@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
 
 const ChatMessage = ({ role, content }) => (
@@ -12,13 +12,13 @@ const ChatMessage = ({ role, content }) => (
 );
 
 function App() {
-  // ... [Keep all the previous state and logic the same] ...
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   
   const mediaRecorder = useRef(null);
   const chunks = useRef([]);
@@ -27,28 +27,88 @@ function App() {
   const chatEndRef = useRef(null);
   const mediaStream = useRef(null);
 
+
+  // Define setupSpeech inside a useCallback
+  const setupSpeech = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError('Speech recognition not supported');
+      return;
+    }
+    
+    recognition.current = new SpeechRecognition();
+    recognition.current.continuous = true;
+    recognition.current.interimResults = true;
+    
+    recognition.current.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .slice(-1)[0][0].transcript;
+      setInput(transcript);
+    };
+
+    recognition.current.onend = () => setIsListening(false);
+  }, []);
+
+  // Define cleanup function with useCallback to avoid recreating on each render
+  const cleanup = useCallback(() => {
+    recognition.current?.stop();
+    if (mediaRecorder.current?.state === 'recording') {
+      mediaRecorder.current.stop();
+    }
+    mediaStream.current?.getTracks().forEach(track => track.stop());
+  }, []);
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  // Setup media when component mounts or when isMobile changes
   useEffect(() => {
     setupMedia();
+  }, [isMobile]); // Add setupMedia as dependency
+  
+  // Setup speech recognition and handle cleanup on unmount
+  useEffect(() => {
     setupSpeech();
     return cleanup;
-  }, []);
+  }, [setupSpeech, cleanup]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const setupMedia = async () => {
+  // Define setupMedia inside a useCallback to avoid recreating it on every render
+  const setupMedia = React.useCallback(async () => {
     try {
+      // Stop any existing tracks before requesting new ones
+      if (mediaStream.current) {
+        mediaStream.current.getTracks().forEach(track => track.stop());
+      }
+      
+      // Adjust video constraints based on screen size
+      const videoConstraints = isMobile
+        ? { width: { ideal: 320 }, height: { ideal: 180 }, facingMode: "user" }
+        : { width: { ideal: 320 }, height: { ideal: 240 } };
+        
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 320, height: 240 }, 
+        video: videoConstraints, 
         audio: true 
       });
       mediaStream.current = stream;
-      videoRef.current.srcObject = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
     } catch (err) {
+      console.error("Media setup error:", err);
       setError('Camera/microphone access required');
     }
-  };
+  }, [isMobile]); // Add isMobile as dependency
 
   const startRecording = () => {
     if (mediaStream.current) {
@@ -80,25 +140,7 @@ function App() {
     }
   };
 
-  const setupSpeech = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError('Speech recognition not supported');
-      return;
-    }
-    
-    recognition.current = new SpeechRecognition();
-    recognition.current.continuous = true;
-    recognition.current.interimResults = true;
-    
-    recognition.current.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .slice(-1)[0][0].transcript;
-      setInput(transcript);
-    };
-
-    recognition.current.onend = () => setIsListening(false);
-  };
+  
 
   const toggleListening = () => {
     if (isListening) {
@@ -132,24 +174,28 @@ function App() {
     setIsLoading(false);
   };
 
-  const cleanup = () => {
-    recognition.current?.stop();
-    if (mediaRecorder.current?.state === 'recording') {
-      mediaRecorder.current.stop();
+  
+
+  // Show error as notification if present
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
     }
-    mediaStream.current?.getTracks().forEach(track => track.stop());
-  };
+  }, [error]);
 
   return (
     <div className="app-container">
       <header className="app-header">
         <h1>AI Assistant</h1>
-        <video ref={videoRef} autoPlay playsInline muted className="camera-preview" />
         <div className="recording-controls">
           <button
             type="button"
             className={`button record-btn ${isRecording ? 'recording' : ''}`}
             onClick={isRecording ? stopRecording : startRecording}
+            aria-label={isRecording ? "Stop recording" : "Start recording"}
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
               {isRecording ? (
@@ -163,10 +209,22 @@ function App() {
             </div>
           </button>
         </div>
+        <video ref={videoRef} autoPlay playsInline muted className="camera-preview" />
       </header>
+
+      {error && (
+        <div className="error-notification">
+          {error}
+        </div>
+      )}
 
       <div className="chat-container">
         <div className="messages">
+          {messages.length === 0 && (
+            <div className="empty-state">
+              <p>Ask me anything to get started...</p>
+            </div>
+          )}
           {messages.map((msg, i) => (
             <ChatMessage key={i} role={msg.role} content={msg.content} />
           ))}
@@ -190,6 +248,7 @@ function App() {
               type="button"
               className={`button mic-btn ${isListening ? 'active' : ''}`}
               onClick={toggleListening}
+              aria-label={isListening ? "Stop listening" : "Start listening"}
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
@@ -206,9 +265,15 @@ function App() {
               placeholder="Ask me anything..."
               required
               className="chat-input"
+              aria-label="Chat input"
             />
             
-            <button type="submit" className="button send-btn" disabled={isLoading}>
+            <button 
+              type="submit" 
+              className="button send-btn" 
+              disabled={isLoading}
+              aria-label="Send message"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
               </svg>
